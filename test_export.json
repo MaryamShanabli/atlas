@@ -1,0 +1,31 @@
+[
+  {
+    "id": "83876a31-d8a7-4afc-943a-068b652fd647",
+    "location_id": "4d18ace4-8065-4794-8ff4-9851f4d8d16c",
+    "start_date": "2026-06-19",
+    "end_date": "2026-06-30",
+    "temperature_actual": 21.28,
+    "temperature_predicted": 27.444427698549724,
+    "condition_text": "overcast clouds",
+    "humidity": 91.0,
+    "precip_mm": 0.0,
+    "aqi_index": 2,
+    "pm2_5": 19.42,
+    "air_quality": null,
+    "is_anomalous": false,
+    "anomaly_reason": null,
+    "source": "live_api",
+    "created_at": "2026-06-19T21:17:36.697157Z",
+    "updated_at": "2026-06-19T21:18:23.646278Z",
+    "location": {
+      "id": "4d18ace4-8065-4794-8ff4-9851f4d8d16c",
+      "resolved_name": "Tokyo",
+      "country_code": "JP",
+      "latitude": 35.6828387,
+      "longitude": 139.7594549,
+      "timezone": null,
+      "has_model_coverage": true,
+      "created_at": "2026-06-19T21:03:34.638596Z"
+    }
+  }
+]

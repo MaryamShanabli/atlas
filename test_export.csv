@@ -1,0 +1,2 @@
+id,location_id,start_date,end_date,temperature_actual,temperature_predicted,condition_text,humidity,precip_mm,aqi_index,pm2_5,is_anomalous,source,created_at
+83876a31-d8a7-4afc-943a-068b652fd647,4d18ace4-8065-4794-8ff4-9851f4d8d16c,2026-06-19,2026-06-30,21.28,27.444427698549724,overcast clouds,91.0,0.0,2,19.42,False,live_api,2026-06-19 21:17:36.697157+00:00

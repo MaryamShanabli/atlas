@@ -33,12 +33,25 @@ def predict_temperature(lat: float, lon: float, target_date: datetime.date) -> f
     return float(_model.predict(X)[0])
 
 
-def has_model_coverage(lat: float, lon: float) -> bool:
-    """True if this location's rounded coordinates appear in the training set."""
-    lat_r, lon_r = round(lat, 2), round(lon, 2)
-    return not _known_coords[
-        (_known_coords["latitude"] == lat_r) & (_known_coords["longitude"] == lon_r)
-    ].empty
+def has_model_coverage(lat: float, lon: float, radius_km: float = 50.0) -> bool:
+    """
+    True if this location is within radius_km of any location the model
+    was trained on. Uses a simple equirectangular approximation (fine at
+    this radius) rather than exact coordinate matching, since a geocoder's
+    resolved point for a city and the dataset's recorded point for the
+    same city are rarely bit-for-bit identical -- they're the same place,
+    just slightly different representative coordinates.
+    """
+    if _known_coords.empty:
+        return False
+    lat_rad = np.radians(lat)
+    dlat = np.radians(_known_coords["latitude"] - lat)
+    dlon = np.radians(_known_coords["longitude"] - lon)
+    # Equirectangular approximation: good enough at <100km, much cheaper than haversine.
+    x = dlon * np.cos(lat_rad)
+    y = dlat
+    dist_km = np.sqrt(x**2 + y**2) * 6371.0
+    return bool((dist_km <= radius_km).any())
 
 
 def get_location_baseline(location_name: str, country_clean: str) -> dict | None:

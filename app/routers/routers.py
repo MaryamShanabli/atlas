@@ -175,7 +175,7 @@ about_router = APIRouter(prefix="/about", tags=["system"])
 def about():
     return {
         "platform": "Atlas Weather Intelligence Platform",
-        "built_by": "Built for the PM Accelerator AI Engineer Internship Assessment",
+        "built_by": "Maryam Shanabli — PM Accelerator AI Engineer Internship Assessment",
         "assessment": "Dual Role: Backend Engineer + Data Science",
         "pm_accelerator_mission": (
             "PM Accelerator is the world's most accessible product management program, "

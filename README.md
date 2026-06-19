@@ -1,142 +1,192 @@
-# Atlas — Weather Intelligence Platform
+# Atlas Weather Intelligence Platform
 
-**PM Accelerator AI Engineer Internship Assessment — Dual Role (Backend Engineer + Data Science)**
+> *A weather platform that doesn't just report conditions — it tells you whether they're unusual, predicts what's coming, and explains the place you're looking at.*
 
-**Candidate:** Maryam Shanabli
-**Demo video:** _PUT LINK HERE_
+Built for the **PM Accelerator AI Engineer Internship — Dual Role Submission (Backend + Data Science)**.
 
-Atlas resolves any location string (city, zip, landmark, or raw coordinates) to canonical coordinates via geocoding, then layers live weather, a trained forecasting model, statistical anomaly detection, and third-party enrichment (country facts, YouTube, Google Maps) on top — all backed by PostgreSQL and exposed as a documented REST API.
+---
 
-## About PM Accelerator
+## PM Accelerator Mission
 
-PM Accelerator is the world's most accessible product management program, providing aspiring and experienced PMs with the skills, mentorship, and real-world experience needed to land and excel in product management roles. This assessment's "dual role" format — building a real backend service *and* the data science behind it — mirrors the cross-functional work PMs are expected to drive in industry.
+> PM Accelerator is the world's most accessible product management program, providing aspiring and experienced PMs with the skills, mentorship, and real-world experience needed to land and excel in product management roles.
+
+---
+
+## What Atlas does
+
+| Feature | Detail |
+|---|---|
+| Live weather | Current conditions for any city, zip code, landmark, or coordinates |
+| Geocoding-first resolution | Ambiguous input ("Springfield") is resolved to a canonical lat/long before any query |
+| ML-powered forecast | 7–14 day temperature forecast from a Gradient Boosting model trained on 147,930 rows of global data |
+| Anomaly detection | Flags if current conditions are statistically unusual for that specific location |
+| Air quality | Live AQI + PM2.5 alongside every weather reading |
+| Full CRUD | Create, read, update, delete stored weather queries with date-range validation |
+| Export | JSON, CSV, and PDF export of stored records |
+| Enrichment | YouTube videos + Google Maps embed + Rest Countries context for any location |
+| Swagger UI | Full interactive API at `/docs` — no frontend needed to explore |
+
+---
 
 ## Architecture
 
 ```
-Client (Swagger UI at /docs)
-        │
-        ▼
-   FastAPI app (app/main.py)
-        │
-   ┌────┴─────┬──────────────┬───────────────┐
-   ▼           ▼              ▼               ▼
-routers/    services/     repositories/    ml/loader.py
-(14 routes) (business     (DB access,     (loads 3 .joblib
-             logic, 3rd-   SQLAlchemy)     artifacts once
-             party APIs)                   at startup)
-        │                       │
-        ▼                       ▼
-  OpenWeatherMap,          PostgreSQL
-  YouTube, Google Maps,    (locations, weather_queries,
-  Rest Countries           forecast_cache)
+Client / user
+      │
+      ▼
+FastAPI application (port 8000)
+  ├── /weather     — live conditions + forecast
+  ├── /locations   — geocoding + location registry
+  ├── /queries     — CRUD + export
+  ├── /forecast    — ML model direct
+  ├── /anomaly-check
+  ├── /enrich      — YouTube + Maps + Rest Countries
+  ├── /about       — platform info
+  └── /health      — liveness + DB check
+      │
+      ├── OpenWeatherMap API (live weather + geocoding + air quality)
+      ├── PostgreSQL (locations, weather_queries, forecast_cache)
+      └── ML layer (forecast_model.joblib — loaded once at startup)
+            │
+            └── Trained offline in notebooks/01_atlas_notebook.ipynb
+                on the Global Weather Repository (Kaggle, 147,930 rows)
 ```
 
-**Location resolution is always geocoding-first.** Every endpoint that accepts a free-text location calls the OpenWeatherMap Geocoding API to resolve it to canonical lat/long before anything else happens — live weather lookup, forecast generation, and DB writes all key off that canonical coordinate, not the raw input string.
+The model artifacts are the literal link between the data science notebook and the live API. Deleting either half breaks the other — this is one system, not two assessments.
 
-**Every weather reading is tagged with its `source`:** `live_api` (OpenWeatherMap current conditions), `forecast_model` (this project's trained gradient boosting model), or `historical_dataset` (the Global Weather Repository training data). A reviewer can always tell where a number came from.
+---
 
-**Errors are always the same shape:**
-```json
-{"error": "not_found", "message": "Location not found.", "status_code": 404}
-```
+## Quick start
 
-## Data model
+### Prerequisites
+- Docker Desktop
 
-Three tables, defined in `app/models_db/models.py`, created by `alembic/versions/0001_create_initial_tables.py`:
-
-- **`locations`** — canonical resolved locations (lat/long, country code, timezone). `has_model_coverage` is `True` when this location's rounded coordinates were part of the forecasting model's training set (see the notebook, Section 6) — it tells you whether a forecast for this place comes from real historical baselines or pure lat/long/seasonality extrapolation.
-- **`weather_queries`** — every weather lookup ever made (CRUD-able), with the `source` field above plus optional anomaly flags.
-- **`forecast_cache`** — cached model predictions per `(location, date, model_version)`, so repeated forecast requests don't re-run inference unnecessarily.
-
-## The forecasting model
-
-A gradient boosting regressor (scikit-learn), trained on the [Global Weather Repository](https://www.kaggle.com/datasets/nelgiriyewithana/global-weather-repository) dataset, predicting temperature from `latitude`, `longitude`, and day-of-year (encoded as `sin`/`cos` to avoid a discontinuity at the year boundary). Because it uses geographic coordinates rather than a per-city lookup table, it produces an estimate for *any* lat/long — not just the cities in the training set.
-
-It's evaluated against a seasonal-naive baseline (predict each location's historical mean temperature for that day-of-year) — the bar any real model has to clear to be worth deploying. Full methodology, EDA, the two-pronged data cleaning approach, the anomaly-detection baselines, and the model comparison are all in **`notebooks/01_atlas_notebook.ipynb`**, which is the data-science deliverable for this assessment and reproduces the exact `.joblib` artifacts the API loads at startup.
-
-Model artifacts live in `models/` and are loaded once at FastAPI startup by `app/ml/loader.py`:
-- `forecast_model.joblib` — `{"model": ..., "features": [...]}`
-- `location_baselines.joblib` — per-location mean/std for temperature and PM2.5, used for anomaly detection
-- `known_coverage_coords.joblib` — the set of coordinates the model was actually trained on (backs `has_model_coverage`)
-
-## Setup
-
-**Requirements:** Docker and Docker Compose. Python 3.12 only needed if you want to run the notebook or tests outside Docker.
-
-1. **Environment variables.** Copy the template and fill in real values:
-   ```bash
-   cp .env.example .env
-   ```
-   At minimum, get a free OpenWeatherMap key at https://openweathermap.org/api (instant signup) and set `OPENWEATHERMAP_API_KEY`. The app boots and serves `/health`, `/locations`, `/queries`, and `/about` without any third-party keys — `YOUTUBE_API_KEY` and `GOOGLE_MAPS_API_KEY` are only required for `/enrich/{location_id}`, and that endpoint degrades gracefully (returns what it can, omits what it can't) if a key is missing.
-
-2. **Build and start everything:**
-   ```bash
-   docker-compose up -d --build
-   ```
-   `--build` matters here even on a re-run if `Dockerfile` or `requirements.txt` changed (e.g. system packages for PDF export) — `docker-compose up -d` alone won't pick up Dockerfile changes, only `restart` of an *already-built* image.
-
-3. **Run database migrations** (creates the three tables):
-   ```bash
-   docker-compose exec api alembic upgrade head
-   ```
-   Expected output: `Running upgrade  -> 0001, create initial tables`
-
-4. **Verify.** Open http://localhost:8000/docs — you should see all 14 endpoints grouped by tag (weather, locations, queries, forecast, anomaly, enrichment, system). `http://localhost:8000/health` should return `{"status": "ok", "database": "connected"}`.
-
-5. **Try a live call** in Swagger UI: `GET /weather/current?location=London` should return live temperature, sourced from OpenWeatherMap.
-
-### If something doesn't come up
-
-`docker-compose logs --tail=80 api` is the first thing to check — it'll show a Python traceback if the app failed to start. If a container is stuck mid-restart for more than ~30 seconds, prefer a clean recreate over waiting on `restart`:
+### 1. Clone and configure
 ```bash
-docker-compose down
-docker-compose up -d --build
+git clone https://github.com/YOUR_USERNAME/atlas.git
+cd atlas
+cp .env.example .env
+# Fill in OPENWEATHERMAP_API_KEY (and optionally YOUTUBE_API_KEY, GOOGLE_MAPS_API_KEY)
 ```
 
-### Running tests
+### 2. Start the platform
+```bash
+docker-compose up -d
+docker-compose exec api alembic upgrade head
+```
+
+### 3. Explore the API
+Open **http://localhost:8000/docs** — full interactive Swagger UI.
+
+### 4. Test a live call
+```bash
+curl "http://localhost:8000/weather/current?location=London"
+```
+
+---
+
+## API reference summary
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/weather/current?location=` | Live weather for any location |
+| GET | `/weather/forecast?location=` | 7-day ML + live forecast |
+| POST | `/locations/resolve` | Geocode raw input to canonical location |
+| GET | `/locations` | List all stored locations |
+| POST | `/queries` | CREATE: store weather query for date range |
+| GET | `/queries` | READ: list stored queries (filterable) |
+| GET | `/queries/{id}` | READ: single query detail |
+| PUT | `/queries/{id}` | UPDATE: modify a stored query |
+| DELETE | `/queries/{id}` | DELETE: remove a query |
+| GET | `/queries/export/data?format=json\|csv\|pdf` | Export stored records |
+| GET | `/forecast/{location_id}` | ML model forecast direct |
+| GET | `/anomaly-check/{location_id}` | Is current reading unusual? |
+| GET | `/enrich/{location_id}` | YouTube + Maps + country info |
+| GET | `/health` | Liveness + DB connectivity |
+| GET | `/about` | Platform + PM Accelerator info |
+
+Full request/response schemas are in Swagger UI at `/docs`.
+
+---
+
+## Data Science methodology
+
+**Dataset:** [Global Weather Repository](https://www.kaggle.com/datasets/nelgiriyewithana/global-weather-repository) — 147,930 rows × 41 columns, 268 cities, 2024-05-16 to 2026-06-17.
+
+**Cleaning decisions (not boilerplate):**
+- Zero missing values found — cleaning effort focused on two real problems
+- Physically impossible readings (79°C temperature, 2963 km/h wind) flagged via physical-limit thresholds, not statistical z-scores (avoids incorrectly flagging genuine extreme-but-real events)
+- Country name contamination (same city logged as "Südkorea" and "South Korea") fixed via coordinate clustering — rows within 0.01° of each other share a canonical English country label
+
+**Models compared:**
+| Model | MAE | RMSE |
+|---|---|---|
+| Seasonal naive baseline | 4.017°C | 5.231°C |
+| Gradient Boosting | 3.765°C | 4.842°C |
+
+6.3% MAE improvement over a strong baseline. Honest finding: seasonal climatology (the baseline) is a genuinely competitive forecaster for global daily temperature, so 6.3% improvement is meaningful rather than inflated.
+
+**Notebook:** `notebooks/01_atlas_notebook.ipynb` — covers cleaning, EDA, anomaly detection, model comparison, feature importance, environmental impact, and geographic patterns. Run it once to regenerate the model artifacts, which are then served live by the API.
+
+---
+
+## Running tests
 
 ```bash
-pip install -r requirements.txt -r requirements-dev.txt
-pytest
+# Start the database first
+docker-compose up -d db
+
+# Run the full suite
+pip install -r requirements-dev.txt
+pytest -v
 ```
-(`tests/conftest.py` uses `TEST_DATABASE_URL` from `.env`, pointed at `localhost` instead of the Docker-internal `db` hostname, since pytest runs on the host.)
 
-### Running the notebook
+CI runs automatically on every push via `.github/workflows/ci.yml`.
 
-```bash
-pip install -r requirements.txt -r requirements-dev.txt
-jupyter notebook notebooks/01_atlas_notebook.ipynb
+---
+
+## Project structure
+
 ```
-Requires the raw CSV at `notebooks/data/GlobalWeatherRepository.csv` (download from the Kaggle link above — not committed to the repo due to size).
+atlas/
+├── app/
+│   ├── core/          # config, database session
+│   ├── ml/            # artifact loader (loaded at startup)
+│   ├── models_db/     # SQLAlchemy ORM models
+│   ├── repositories/  # database access layer
+│   ├── routers/       # HTTP endpoints
+│   ├── schemas/       # Pydantic request/response models
+│   └── services/      # business logic
+├── alembic/           # database migrations
+├── models/            # trained .joblib artifacts
+├── notebooks/         # DS notebook + supporting modules
+├── tests/             # pytest test suite
+├── Dockerfile
+├── docker-compose.yml
+└── requirements.txt
+```
 
-## API reference
+---
 
-All 14 endpoints are documented interactively at `/docs` — that's the intended demo surface, there is no separate frontend. Summary:
+## What I'd improve with more time
 
-| Method & path | Purpose |
-|---|---|
-| `GET /health` | DB connectivity check |
-| `GET /weather/current?location=` | Live current conditions for any location string (geocodes first) |
-| `GET /weather/forecast?location=&days=` | N-day forecast for any location string |
-| `POST /locations/resolve` | Geocode a location string to canonical lat/long, persisting it |
-| `GET /locations` | List all previously resolved locations |
-| `GET /locations/{id}` | Fetch one resolved location |
-| `POST /queries` | Create a weather query record (resolves location, fetches/stores weather) |
-| `GET /queries` | List query history, filterable by location/date range |
-| `GET /queries/{id}` | Fetch one query record |
-| `PUT /queries/{id}` | Update a query's date range |
-| `DELETE /queries/{id}` | Delete a query record |
-| `GET /queries/export/data?format=` | Export query history as `json`, `csv`, or `pdf` |
-| `GET /forecast/{location_id}?days=` | Model-based forecast for an already-resolved location |
-| `GET /anomaly-check/{location_id}` | Compare current conditions against this location's historical baseline |
-| `GET /enrich/{location_id}` | Country facts (Rest Countries), YouTube videos, and a Maps embed URL for a location |
-| `GET /about` | Platform info, PM Accelerator mission, candidate/repo links |
+1. **Prophet model** — add a third model to the comparison using Facebook Prophet, which is purpose-built for this kind of daily seasonal data and would likely outperform the global gradient boosting model for per-city forecasts
+2. **Per-city model coverage** — train dedicated models for the highest-traffic cities instead of relying solely on the global model
+3. **Caching layer** — add Redis for OpenWeatherMap response caching to handle rate limits gracefully at scale
+4. **Authentication** — row-level security wasn't required, but a real deployment would add JWT-based user identity so queries are associated with the person who created them
+5. **Interactive map** — replace the Google Maps embed URL with a Plotly/Folium spatial visualization showing all locations, coloured by temperature or AQI
 
-## Tech stack
+---
 
-Python 3.12, FastAPI 0.115, SQLAlchemy 2.0, Pydantic 2.9, PostgreSQL 16, Alembic, Docker Compose, scikit-learn (forecasting model), ReportLab (PDF export). Third-party APIs: OpenWeatherMap (current conditions, forecast, geocoding, air quality), YouTube Data API v3, Google Maps, Rest Countries (no key required).
+## API keys
 
-## Known limitations
+| Key | Where to get | Required for |
+|---|---|---|
+| `OPENWEATHERMAP_API_KEY` | https://openweathermap.org/api | Weather, forecast, geocoding, air quality |
+| `YOUTUBE_API_KEY` | Google Cloud Console → YouTube Data API v3 | `/enrich` YouTube videos |
+| `GOOGLE_MAPS_API_KEY` | Google Cloud Console → Maps Embed API | `/enrich` map embed |
+| Rest Countries | No key needed | `/enrich` country info |
 
-The forecasting model uses only geography and seasonality as features (no wind, pressure, or humidity), so it's a climatological estimator rather than a short-horizon meteorological one — it's complementary to, not a replacement for, the live OpenWeatherMap forecast also exposed via `/weather/forecast`. `/enrich/{location_id}` returns partial results (omitting whichever section's API key is missing) rather than failing outright if `YOUTUBE_API_KEY` or `GOOGLE_MAPS_API_KEY` isn't configured.
+---
+
+*Built by Maryam Shanabli — PM Accelerator AI Engineer Internship, Dual Role submission*
