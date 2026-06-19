@@ -264,19 +264,62 @@ async def get_enrichment(location: Location) -> dict[str, Any]:
 
 
 async def _get_country_info(country_code: str) -> dict | None:
+    # REST Countries v1-v4 (incl. the old /v3.1/alpha/{code} endpoint we used
+    # to call here) were deprecated and shut down. v5 is the new long-term
+    # stable version: new host, requires an API key, and a different response
+    # shape (a flat data.objects[] array, with dotted keys for any field we
+    # explicitly asked for via response_fields).
+    if not settings.rest_countries_api_key:
+        return None
     try:
-        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
-            r = await client.get(f"https://restcountries.com/v3.1/alpha/{country_code}")
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(
+                f"https://api.restcountries.com/countries/v5/codes.alpha_2/{country_code}",
+                params={
+                    "response_fields": "names.common,capitals,region,population,currencies,languages,flag.emoji"
+                },
+                headers={"Authorization": f"Bearer {settings.rest_countries_api_key}"},
+            )
             r.raise_for_status()
-        data = r.json()
-        c = data[0]
+        objects = r.json().get("data", {}).get("objects", [])
+        if not objects:
+            return None
+        c = objects[0]
+
+        capitals = c.get("capitals") or []
+        capital_name = capitals[0].get("name") if capitals and isinstance(capitals[0], dict) else None
+
+        languages = c.get("languages") or []
+        language_names = [
+            lang.get("name") or lang.get("english_name") or lang.get("common_name")
+            for lang in languages
+            if isinstance(lang, dict)
+        ]
+
+        currencies = c.get("currencies")
+        if isinstance(currencies, dict):
+            currency_codes = list(currencies.keys())
+        elif isinstance(currencies, list):
+            currency_codes = [cur.get("code") for cur in currencies if isinstance(cur, dict)]
+        else:
+            currency_codes = []
+
+        name = c.get("names.common")
+        if name is None and isinstance(c.get("names"), dict):
+            name = c["names"].get("common")
+
+        flag_emoji = c.get("flag.emoji")
+        if flag_emoji is None and isinstance(c.get("flag"), dict):
+            flag_emoji = c["flag"].get("emoji")
+
         return {
-            "name": c["name"]["common"],
-            "capital": c.get("capital", [None])[0],
+            "name": name,
+            "capital": capital_name,
             "region": c.get("region"),
             "population": c.get("population"),
-            "currencies": list(c.get("currencies", {}).keys()),
-            "languages": list(c.get("languages", {}).values()),
+            "currencies": currency_codes,
+            "languages": [name for name in language_names if name],
+            "flag_emoji": flag_emoji,
         }
     except Exception:
         return None

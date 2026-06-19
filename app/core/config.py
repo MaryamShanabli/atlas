@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     openweathermap_api_key: str | None = None
     youtube_api_key: str | None = None
     google_maps_api_key: str | None = None
+    rest_countries_api_key: str | None = None
 
     # App
     app_env: str = "development"

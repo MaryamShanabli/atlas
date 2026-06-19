@@ -95,6 +95,8 @@ class CurrentWeatherOut(BaseModel):
 
 
 class ForecastDayOut(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
     date: date
     predicted_temp_c: float
     confidence_lower: float | None
