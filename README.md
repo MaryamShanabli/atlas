@@ -63,7 +63,7 @@ The model artifacts are the literal link between the data science notebook and t
 
 ### 1. Clone and configure
 ```bash
-git clone https://github.com/YOUR_USERNAME/atlas.git
+git clone https://github.com/MaryamShanabli/atlas.git
 cd atlas
 cp .env.example .env
 # Fill in OPENWEATHERMAP_API_KEY (and optionally YOUTUBE_API_KEY, GOOGLE_MAPS_API_KEY)
