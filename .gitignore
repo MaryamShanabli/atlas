@@ -1,1 +1,33 @@
+# Secrets — never commit real credentials
 .env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local data working files (raw CSV is large; document download instructions in README instead)
+notebooks/data/*.csv
+notebooks/data/*.zip
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Postgres local volume if ever run outside Docker
+*.db-shm
+*.db-wal
+
+# Test cache
+.pytest_cache/
+
+# Local test artifacts from manual curl testing
+test_export.json
+test_export.csv
+test_export.pdf
